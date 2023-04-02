@@ -42,6 +42,9 @@ interface IStaking {
     /// It returns base and delegation rewards, and makes principle frozen for later claiming.
     function unstake(uint256 amount) external;
 
+    /// @notice This function allows community stakers to claim base rewards and frozen principals(if any).
+    function claim() external;
+
     /// @notice This function allows stakers to claim base rewards.
     function claimReward() external;
 
@@ -118,9 +121,15 @@ interface IStaking {
     /// total staked amount + total frozen amount + available rewards = current balance
     function getTotalFrozenAmount() external view returns (uint256);
 
-    /// @return amounts total amounts of ARPA wei that is currently frozen
+    /// @return amounts total amounts of ARPA wei that is currently frozen by the staker
     /// @return unlockTimestamps timestamps when the frozen principal can be withdrawn
-    function getFrozenPrincipal() external view returns (uint96[] memory amounts, uint256[] memory unlockTimestamps);
+    function getFrozenPrincipal(address)
+        external
+        view
+        returns (uint96[] memory amounts, uint256[] memory unlockTimestamps);
+
+    /// @return uint256 amount of ARPA wei that can be claimed as frozen principal by a staker
+    function getClaimablePrincipalAmount(address) external view returns (uint256);
 
     /// @return address controller contract's address that is used by the pool
     function getController() external view returns (address);

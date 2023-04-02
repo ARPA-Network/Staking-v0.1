@@ -274,6 +274,11 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         emit DelegationRewardSlashed(staker, slashedRewards);
     }
 
+    /// @inheritdoc INodeStaking
+    function getLockedAmount(address staker) external view override(INodeStaking) returns (uint256) {
+        return s_pool.stakers[staker].lockedStakeAmount;
+    }
+
     // ========
     // IStaking
     // ========
@@ -284,12 +289,13 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
             revert StakingPoolLib.InsufficientStakeAmount(RewardLib.REWARD_PRECISION);
         }
 
-        // Give change to avoid cumulative rounding errors.
+        // Round down input amount to avoid cumulative rounding errors.
         uint256 remainder = amount % RewardLib.REWARD_PRECISION;
         if (remainder > 0) {
             amount -= remainder;
-            i_ARPA.transfer(msg.sender, remainder);
         }
+
+        i_ARPA.transferFrom(msg.sender, address(this), amount);
 
         if (s_pool._isOperator(msg.sender)) {
             _stakeAsOperator(msg.sender, amount);
@@ -300,6 +306,12 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
     /// @inheritdoc IStaking
     function unstake(uint256 amount) external override(IStaking) whenNotPaused {
+        // Round down unstake amount to avoid cumulative rounding errors.
+        uint256 remainder = amount % RewardLib.REWARD_PRECISION;
+        if (remainder > 0) {
+            amount -= remainder;
+        }
+
         (uint256 baseReward, uint256 delegationReward) = _exit(msg.sender, amount, false);
 
         i_ARPA.transfer(msg.sender, baseReward + delegationReward);
@@ -308,7 +320,15 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     }
 
     /// @inheritdoc IStaking
-    function claimReward() external override(IStaking) whenNotPaused {
+    function claim() external override(IStaking) whenNotPaused {
+        claimReward();
+        if (s_pool.stakers[msg.sender].frozenPrincipals.length > 0) {
+            claimFrozenPrincipal();
+        }
+    }
+
+    /// @inheritdoc IStaking
+    function claimReward() public override(IStaking) whenNotPaused {
         StakingPoolLib.Staker memory stakerAccount = s_pool.stakers[msg.sender];
         if (stakerAccount.isOperator) {
             revert StakingPoolLib.NoBaseRewardForOperator();
@@ -329,7 +349,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     }
 
     /// @inheritdoc IStaking
-    function claimFrozenPrincipal() external override(IStaking) whenNotPaused {
+    function claimFrozenPrincipal() public override(IStaking) whenNotPaused {
         StakingPoolLib.FrozenPrincipal[] storage frozenPrincipals = s_pool.stakers[msg.sender].frozenPrincipals;
         if (frozenPrincipals.length == 0) revert StakingPoolLib.FrozenPrincipalDoesNotExist(msg.sender);
 
@@ -354,7 +374,9 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
             }
         }
 
-        i_ARPA.transfer(msg.sender, claimingPrincipal);
+        if (claimingPrincipal > 0) {
+            i_ARPA.transfer(msg.sender, claimingPrincipal);
+        }
 
         emit FrozenPrincipalClaimed(msg.sender, claimingPrincipal);
     }
@@ -459,16 +481,33 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     }
 
     /// @inheritdoc IStaking
-    function getFrozenPrincipal()
+    function getFrozenPrincipal(address staker)
         external
         view
         override(IStaking)
         returns (uint96[] memory amounts, uint256[] memory unlockTimestamps)
     {
-        StakingPoolLib.FrozenPrincipal[] memory frozenPrincipals = s_pool.stakers[msg.sender].frozenPrincipals;
+        StakingPoolLib.FrozenPrincipal[] memory frozenPrincipals = s_pool.stakers[staker].frozenPrincipals;
+        amounts = new uint96[](frozenPrincipals.length);
+        unlockTimestamps = new uint256[](frozenPrincipals.length);
         for (uint256 i = 0; i < frozenPrincipals.length; i++) {
             amounts[i] = frozenPrincipals[i].amount;
             unlockTimestamps[i] = frozenPrincipals[i].unlockTimestamp;
+        }
+    }
+
+    /// @inheritdoc IStaking
+    function getClaimablePrincipalAmount(address) external view returns (uint256 claimingPrincipal) {
+        StakingPoolLib.FrozenPrincipal[] storage frozenPrincipals = s_pool.stakers[msg.sender].frozenPrincipals;
+        if (frozenPrincipals.length == 0) return 0;
+
+        for (uint256 i = 0; i < frozenPrincipals.length; i++) {
+            StakingPoolLib.FrozenPrincipal storage frozenPrincipal = frozenPrincipals[i];
+            if (frozenPrincipals[i].unlockTimestamp <= block.timestamp) {
+                claimingPrincipal += frozenPrincipal.amount;
+            } else {
+                break;
+            }
         }
     }
 
@@ -519,7 +558,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         s_reward._accumulateDelegationRewards(getTotalDelegatedAmount(), getTotalCommunityStakedAmount());
 
         uint256 extraNonDelegatedAmount = RewardLib._getNonDelegatedAmount(amount, i_delegationRateDenominator);
-        s_reward.missed[staker].base =
+        s_reward.missed[staker].base +=
             s_reward._calculateAccruedBaseRewards(extraNonDelegatedAmount, getTotalCommunityStakedAmount())._toUint96();
         s_pool.state.totalCommunityStakedAmount += amount._toUint96();
         s_pool.stakers[staker].stakedAmount = newStakedAmount._toUint96();

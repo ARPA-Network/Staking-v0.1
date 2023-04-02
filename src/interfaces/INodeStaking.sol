@@ -35,4 +35,8 @@ interface INodeStaking {
     /// @param staker Node address
     /// @param amount Amount to slash
     function slashDelegationReward(address staker, uint256 amount) external;
+
+    /// @notice This function returns the locked amount of a node.
+    /// @param staker Node address
+    function getLockedAmount(address staker) external view returns (uint256);
 }
