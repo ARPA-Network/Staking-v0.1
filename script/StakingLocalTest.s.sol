@@ -11,27 +11,14 @@ contract StakingLocalTestScript is Script {
     address node1Address = vm.envAddress("NODE_1");
     address node2Address = vm.envAddress("NODE_2");
 
-    /// @notice The ARPA Token
-    ArpaTokenInterface ARPAAddress;
-    /// @notice The initial maximum total stake amount across all stakers
-    uint256 initialMaxPoolSize = 50_000_000 * 1e18;
-    /// @notice The initial maximum stake amount for a single community staker
-    uint256 initialMaxCommunityStakeAmount = 2_500_000 * 1e18;
-    /// @notice The minimum stake amount that a community staker can stake
-    uint256 minCommunityStakeAmount = 1e12;
-    /// @notice The minimum stake amount that an operator can stake
-    uint256 operatorStakeAmount = 500_000 * 1e18;
-    /// @notice The minimum number of node operators required to initialize the
-    /// staking pool.
-    uint256 minInitialOperatorCount = 1;
-    /// @notice The minimum reward duration after pool config updates and pool
-    /// reward extensions
-    uint256 minRewardDuration = 1 days;
-    /// @notice Used to calculate delegated stake amount
-    /// = amount / delegation rate denominator = 100% / 100 = 1%
-    uint256 delegationRateDenominator = 20;
-    /// @notice The freeze duration for stakers after unstaking
-    uint256 unstakeFreezingDuration = 14 days;
+    uint256 initialMaxPoolSize = vm.envUint("INITIAL_MAX_POOL_SIZE");
+    uint256 initialMaxCommunityStakeAmount = vm.envUint("INITIAL_MAX_COMMUNITY_STAKE_AMOUNT");
+    uint256 minCommunityStakeAmount = vm.envUint("MIN_COMMUNITY_STAKE_AMOUNT");
+    uint256 operatorStakeAmount = vm.envUint("OPERATOR_STAKE_AMOUNT");
+    uint256 minInitialOperatorCount = vm.envUint("MIN_INITIAL_OPERATOR_COUNT");
+    uint256 minRewardDuration = vm.envUint("MIN_REWARD_DURATION");
+    uint256 delegationRateDenominator = vm.envUint("DELEGATION_RATE_DENOMINATOR");
+    uint256 unstakeFreezingDuration = vm.envUint("UNSTAKE_FREEZING_DURATION");
 
     function setUp() public {}
 
