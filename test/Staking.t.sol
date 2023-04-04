@@ -600,7 +600,6 @@ contract StakingTest is Test {
     function testStakeAndUnstake2u2n() public {
         uint256 rewardRate = rewardAmount / 30 days;
         uint256 userToStake = 1_000 * 1e18;
-        deal(address(arpa), user1, userToStake);
 
         uint256 nodeToStake = operatorStakeAmount;
         deal(address(arpa), node1, nodeToStake);
@@ -616,11 +615,13 @@ contract StakingTest is Test {
         vm.prank(admin);
         arpa.approve(address(staking), rewardAmount);
         vm.prank(admin);
-        // T0
         staking.start(rewardAmount, 30 days);
+
+        // T0
         // user1 stakes 2 * #userToStake
+        deal(address(arpa), user1, 2 * userToStake);
         vm.prank(user1);
-        arpa.approve(address(staking), userToStake);
+        arpa.approve(address(staking), 2 * userToStake);
         vm.prank(user1);
         staking.stake(2 * userToStake);
         assertEq(staking.getStake(user1), 2 * userToStake);
@@ -643,9 +644,9 @@ contract StakingTest is Test {
         emit log_named_uint("rewards of u1 on T10", balanceAfter - balanceBefore);
 
         // user2 stakes 2 * #userToStake
-        deal(address(arpa), user2, userToStake);
+        deal(address(arpa), user2, 2 * userToStake);
         vm.prank(user2);
-        arpa.approve(address(staking), userToStake);
+        arpa.approve(address(staking), 2 * userToStake);
         vm.prank(user2);
         staking.stake(2 * userToStake);
         assertEq(staking.getStake(user2), 2 * userToStake);
