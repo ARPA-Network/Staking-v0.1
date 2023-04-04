@@ -1,5 +1,9 @@
 # ARPA-Network Staking v0.1 Solidity Contracts
 
+## Dependencies
+
+Install [foundry](https://github.com/foundry-rs/foundry#installation).
+
 ## Usage
 
 See [interfaces](src/interfaces/) for apis.
