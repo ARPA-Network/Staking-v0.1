@@ -36,7 +36,6 @@ library RewardLib {
 
     struct DelegatedRewards {
         // Count of delegates who are eligible for a share of a reward
-        // This is always going to be less or equal to operatorsCount
         uint8 delegatesCount;
         // Tracks base reward amounts that goes to an operator as delegation rewards.
         // Used to correctly account for any changes in operator count, delegated amount, or reward rate.
@@ -47,6 +46,8 @@ library RewardLib {
     }
 
     struct BaseRewards {
+        // Count of community stakers who are eligible for a share of a reward
+        uint32 communityStakersCount;
         // The cumulative ARPA accrued per stake from past reward rates
         // expressed in ARPA wei per micro ARPA
         uint96 cumulativePerShare;

@@ -25,7 +25,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     /// constructor.
     struct PoolConstructorParams {
         /// @notice The ARPA Token
-        ArpaTokenInterface ARPAAddress;
+        ArpaTokenInterface ARPA;
         /// @notice The initial maximum total stake amount across all stakers
         uint256 initialMaxPoolSize;
         /// @notice The initial maximum stake amount for a single community staker
@@ -47,35 +47,47 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         uint256 unstakeFreezingDuration;
     }
 
-    ArpaTokenInterface private immutable i_ARPA;
-    StakingPoolLib.Pool private s_pool;
-    RewardLib.Reward private s_reward;
+    ArpaTokenInterface internal immutable i_ARPA;
+    StakingPoolLib.Pool internal s_pool;
+    RewardLib.Reward internal s_reward;
     /// @notice The address of the controller contract
-    address private s_controller;
+    address internal s_controller;
     /// @notice The proposed address stakers will migrate funds to
-    address private s_proposedMigrationTarget;
+    address internal s_proposedMigrationTarget;
     /// @notice The timestamp of when the migration target was proposed at
-    uint256 private s_proposedMigrationTargetAt;
+    uint256 internal s_proposedMigrationTargetAt;
     /// @notice The address stakers can migrate their funds to
-    address private s_migrationTarget;
+    address internal s_migrationTarget;
     /// @notice The stake amount that a node operator should stake
-    uint256 private immutable i_operatorStakeAmount;
+    uint256 internal immutable i_operatorStakeAmount;
     /// @notice The minimum stake amount that a community staker can stake
-    uint256 private immutable i_minCommunityStakeAmount;
+    uint256 internal immutable i_minCommunityStakeAmount;
     /// @notice The minimum number of node operators required to initialize the
     /// staking pool.
-    uint256 private immutable i_minInitialOperatorCount;
+    uint256 internal immutable i_minInitialOperatorCount;
     /// @notice The minimum reward duration after pool config updates and pool
     /// reward extensions
-    uint256 private immutable i_minRewardDuration;
+    uint256 internal immutable i_minRewardDuration;
     /// @notice Used to calculate delegated stake amount
     /// = amount / delegation rate denominator = 100% / 100 = 1%
-    uint256 private immutable i_delegationRateDenominator;
+    uint256 internal immutable i_delegationRateDenominator;
     /// @notice The freeze duration for stakers after unstaking
-    uint256 private immutable i_unstakeFreezingDuration;
+    uint256 internal immutable i_unstakeFreezingDuration;
+
+    event StakingConfigSet(
+        address ARPAAddress,
+        uint256 initialMaxPoolSize,
+        uint256 initialMaxCommunityStakeAmount,
+        uint256 minCommunityStakeAmount,
+        uint256 operatorStakeAmount,
+        uint256 minInitialOperatorCount,
+        uint256 minRewardDuration,
+        uint256 delegationRateDenominator,
+        uint256 unstakeFreezingDuration
+    );
 
     constructor(PoolConstructorParams memory params) {
-        if (address(params.ARPAAddress) == address(0)) revert InvalidZeroAddress();
+        if (address(params.ARPA) == address(0)) revert InvalidZeroAddress();
         if (params.delegationRateDenominator == 0) revert InvalidDelegationRate();
         if (RewardLib.REWARD_PRECISION % params.delegationRateDenominator > 0) {
             revert InvalidDelegationRate();
@@ -88,13 +100,25 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         }
 
         s_pool._setConfig(params.initialMaxPoolSize, params.initialMaxCommunityStakeAmount);
-        i_ARPA = params.ARPAAddress;
+        i_ARPA = params.ARPA;
         i_operatorStakeAmount = params.operatorStakeAmount;
         i_minCommunityStakeAmount = params.minCommunityStakeAmount;
         i_minInitialOperatorCount = params.minInitialOperatorCount;
         i_minRewardDuration = params.minRewardDuration;
         i_delegationRateDenominator = params.delegationRateDenominator;
         i_unstakeFreezingDuration = params.unstakeFreezingDuration;
+
+        emit StakingConfigSet(
+            address(params.ARPA),
+            params.initialMaxPoolSize,
+            params.initialMaxCommunityStakeAmount,
+            params.minCommunityStakeAmount,
+            params.operatorStakeAmount,
+            params.minInitialOperatorCount,
+            params.minRewardDuration,
+            params.delegationRateDenominator,
+            params.unstakeFreezingDuration
+        );
     }
 
     // =======================
@@ -114,6 +138,8 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     function setController(address controller) external override(IStakingOwner) onlyOwner {
         if (controller == address(0)) revert InvalidZeroAddress();
         s_controller = controller;
+
+        emit ControllerSet(controller);
     }
 
     /// @inheritdoc IStakingOwner
@@ -284,7 +310,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     // ========
 
     /// @inheritdoc IStaking
-    function stake(uint256 amount) external override(IStaking) whenNotPaused whenActive {
+    function stake(uint256 amount) external override(IStaking) whenNotPaused {
         if (amount < RewardLib.REWARD_PRECISION) {
             revert StakingPoolLib.InsufficientStakeAmount(RewardLib.REWARD_PRECISION);
         }
@@ -465,6 +491,10 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         return uint256(s_reward.delegated.delegatesCount);
     }
 
+    function getCommunityStakersCount() external view returns (uint256) {
+        return uint256(s_reward.base.communityStakersCount);
+    }
+
     /// @inheritdoc IStaking
     function getTotalStakedAmount() public view override(IStaking) returns (uint256) {
         return s_pool._getTotalStakedAmount();
@@ -527,13 +557,13 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     }
 
     // =======
-    // Private
+    // Internal
     // =======
 
     /// @notice Helper function for when a community staker enters the pool
     /// @param staker The staker address
     /// @param amount The amount of principal staked
-    function _stakeAsCommunityStaker(address staker, uint256 amount) private {
+    function _stakeAsCommunityStaker(address staker, uint256 amount) internal whenActive {
         uint256 currentStakedAmount = s_pool.stakers[staker].stakedAmount;
         uint256 newStakedAmount = currentStakedAmount + amount;
         // Check that the amount is greater than or equal to the minimum required
@@ -557,6 +587,11 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         s_reward._accumulateBaseRewards(getTotalCommunityStakedAmount());
         s_reward._accumulateDelegationRewards(getTotalDelegatedAmount(), getTotalCommunityStakedAmount());
 
+        // On first stake
+        if (currentStakedAmount == 0) {
+            s_reward.base.communityStakersCount += 1;
+        }
+
         uint256 extraNonDelegatedAmount = RewardLib._getNonDelegatedAmount(amount, i_delegationRateDenominator);
         s_reward.missed[staker].base +=
             s_reward._calculateAccruedBaseRewards(extraNonDelegatedAmount, getTotalCommunityStakedAmount())._toUint96();
@@ -568,7 +603,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     /// @notice Helper function for when an operator enters the pool
     /// @param staker The staker address
     /// @param amount The amount of principal staked
-    function _stakeAsOperator(address staker, uint256 amount) private {
+    function _stakeAsOperator(address staker, uint256 amount) internal {
         StakingPoolLib.Staker storage operator = s_pool.stakers[staker];
         uint256 currentStakedAmount = operator.stakedAmount;
         uint256 newStakedAmount = currentStakedAmount + amount;
@@ -604,7 +639,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
     /// @notice Helper function when staker exits the pool
     /// @param staker The staker address
-    function _exit(address staker) private returns (uint256, uint256, uint256) {
+    function _exit(address staker) internal returns (uint256, uint256, uint256) {
         StakingPoolLib.Staker memory stakerAccount = s_pool.stakers[staker];
         if (stakerAccount.stakedAmount == 0) {
             revert StakingPoolLib.StakeNotFound(staker);
@@ -618,7 +653,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
     /// @notice Helper function when staker exits the pool
     /// @param staker The staker address
-    function _exit(address staker, uint256 amount, bool isMigrate) private returns (uint256, uint256) {
+    function _exit(address staker, uint256 amount, bool isMigrate) internal returns (uint256, uint256) {
         StakingPoolLib.Staker memory stakerAccount = s_pool.stakers[staker];
         if (amount == 0) {
             revert StakingPoolLib.UnstakeWithZeroAmount(staker);
@@ -665,6 +700,10 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
             s_pool.state.totalCommunityStakedAmount -= amount._toUint96();
             s_pool.stakers[staker].stakedAmount -= amount._toUint96();
+
+            if (s_pool.stakers[staker].stakedAmount == 0) {
+                s_reward.base.communityStakersCount -= 1;
+            }
 
             if (!isMigrate) {
                 s_pool.totalFrozenAmount += amount._toUint96();

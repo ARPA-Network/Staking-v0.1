@@ -2,6 +2,10 @@
 pragma solidity >=0.8.10;
 
 interface IStaking {
+    /// @notice This event is emitted when the controller is set.
+    /// @param controller Controller address
+    event ControllerSet(address controller);
+
     /// @notice This event is emitted when a staker adds stake to the pool.
     /// @param staker Staker address
     /// @param newStake New principal amount staked
@@ -105,9 +109,13 @@ interface IStaking {
     function getTotalDelegatedAmount() external view returns (uint256);
 
     /// @notice Delegates count increases after an operator is added to the list
-    /// of operators and stakes the minimum required amount.
+    /// of operators and stakes the required amount.
     /// @return uint256 number of staking operators that are eligible for delegation rewards
     function getDelegatesCount() external view returns (uint256);
+
+    /// @notice This count all community stakers that have a staking balance greater than 0.
+    /// @return uint256 number of staking community stakers that are eligible for base rewards
+    function getCommunityStakersCount() external view returns (uint256);
 
     /// @return uint256 total amount staked by community stakers and operators in ARPA wei
     function getTotalStakedAmount() external view returns (uint256);

@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import "src/Staking.sol";
+import "./MockStakingMigrationTarget.sol";
 
 contract StakingTest is Test {
     Staking staking;
@@ -70,6 +71,73 @@ contract StakingTest is Test {
         staking = new Staking(params);
     }
 
+    function testNodeOperatorsStakeCondition() public {
+        deal(address(arpa), node1, operatorStakeAmount);
+        vm.prank(node1);
+        arpa.approve(address(staking), operatorStakeAmount);
+        // The operator will be treated as a community staker since it is not configured as a node operator.
+        // And a community staker cannot stake before the pool is started.
+        vm.expectRevert(abi.encodeWithSelector(StakingPoolLib.InvalidPoolStatus.selector, false, true));
+        vm.prank(node1);
+        staking.stake(operatorStakeAmount);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        staking.addOperators(operators);
+
+        vm.prank(admin);
+        staking.emergencyPause();
+
+        vm.expectRevert("Pausable: paused");
+        vm.prank(node1);
+        staking.stake(operatorStakeAmount);
+
+        vm.prank(admin);
+        staking.emergencyUnpause();
+
+        vm.prank(node1);
+        staking.stake(operatorStakeAmount);
+        assertEq(staking.getDelegatesCount(), 1);
+        assertEq(staking.getStake(node1), operatorStakeAmount);
+    }
+
+    function testCommunityStakersStakeCondition() public {
+        uint256 userToStake = 1_000 * 1e18;
+        deal(address(arpa), user1, userToStake);
+        vm.prank(user1);
+        arpa.approve(address(staking), userToStake);
+        vm.expectRevert(abi.encodeWithSelector(StakingPoolLib.InvalidPoolStatus.selector, false, true));
+        vm.prank(user1);
+        staking.stake(userToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        staking.addOperators(operators);
+
+        vm.warp(0 days);
+        vm.prank(admin);
+        arpa.approve(address(staking), rewardAmount);
+        vm.prank(admin);
+        staking.start(rewardAmount, 30 days);
+
+        vm.prank(admin);
+        staking.emergencyPause();
+
+        vm.expectRevert("Pausable: paused");
+        vm.prank(user1);
+        staking.stake(userToStake);
+
+        vm.prank(admin);
+        staking.emergencyUnpause();
+
+        vm.prank(user1);
+        staking.stake(userToStake);
+        assertEq(staking.getCommunityStakersCount(), 1);
+        assertEq(staking.getStake(user1), userToStake);
+    }
+
     function testRewardCalculation1u1n() public {
         uint256 rewardRate = rewardAmount / 30 days;
         uint256 userToStake = 1_000 * 1e18;
@@ -83,6 +151,15 @@ contract StakingTest is Test {
         vm.prank(admin);
         staking.addOperators(operators);
 
+        // before the pool starts
+        vm.prank(node1);
+        arpa.approve(address(staking), nodeToStake);
+        vm.prank(node1);
+        staking.stake(nodeToStake);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertEq(staking.getDelegationReward(node1), 0);
+
+        vm.warp(0 days);
         vm.prank(admin);
         arpa.approve(address(staking), rewardAmount);
         vm.prank(admin);
@@ -95,13 +172,6 @@ contract StakingTest is Test {
         staking.stake(userToStake);
         assertEq(staking.getBaseReward(user1), 0);
         assertEq(staking.getDelegationReward(user1), 0);
-
-        vm.prank(node1);
-        arpa.approve(address(staking), nodeToStake);
-        vm.prank(node1);
-        staking.stake(nodeToStake);
-        assertEq(staking.getBaseReward(node1), 0);
-        assertEq(staking.getDelegationReward(node1), 0);
 
         // T10
         vm.warp(10 * 1 days);
@@ -131,6 +201,7 @@ contract StakingTest is Test {
         vm.prank(admin);
         staking.addOperators(operators);
 
+        vm.warp(0 days);
         vm.prank(admin);
         arpa.approve(address(staking), rewardAmount);
         vm.prank(admin);
@@ -193,7 +264,7 @@ contract StakingTest is Test {
         assertApproxEqAbs(staking.getDelegationReward(node2), (rewardRate * 10 days / 2) * 5 / 100, 1e18);
     }
 
-    function testRewardCalculationScenario() public {
+    function testComprehensiveScenario() public {
         uint256 rewardRate = rewardAmount / 30 days;
 
         uint256 balanceBefore;
@@ -210,6 +281,15 @@ contract StakingTest is Test {
         vm.prank(admin);
         staking.addOperators(operators);
 
+        // Before the pool starts
+        // nodeA stakes 500,000
+        deal(address(arpa), node1, nodeToStake);
+        vm.prank(node1);
+        arpa.approve(address(staking), nodeToStake);
+        vm.prank(node1);
+        staking.stake(nodeToStake);
+
+        vm.warp(0 days);
         vm.prank(admin);
         arpa.approve(address(staking), rewardAmount);
         vm.prank(admin);
@@ -223,12 +303,6 @@ contract StakingTest is Test {
         arpa.approve(address(staking), 3_000 * 1e18);
         vm.prank(user1);
         staking.stake(3_000 * 1e18);
-
-        deal(address(arpa), node1, nodeToStake);
-        vm.prank(node1);
-        arpa.approve(address(staking), nodeToStake);
-        vm.prank(node1);
-        staking.stake(nodeToStake);
 
         assertEq(staking.getTotalCommunityStakedAmount(), 3_000 * 1e18);
 
@@ -552,6 +626,148 @@ contract StakingTest is Test {
         vm.prank(node3);
         staking.claimFrozenPrincipal();
         assertApproxEqAbs(arpa.balanceOf(address(staking)), 0, 1e18);
+        assertEq(staking.getDelegatesCount(), 0);
+        assertEq(staking.getCommunityStakersCount(), 0);
+    }
+
+    function testBothLateRewardCalculation1u1n() public {
+        uint256 rewardRate = rewardAmount / 30 days;
+        uint256 userToStake = 1_000 * 1e18;
+        deal(address(arpa), user1, userToStake);
+
+        uint256 nodeToStake = operatorStakeAmount;
+        deal(address(arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        staking.addOperators(operators);
+
+        vm.prank(admin);
+        arpa.approve(address(staking), rewardAmount);
+        vm.prank(admin);
+        // T0
+        staking.start(rewardAmount, 30 days);
+
+        // T5
+        vm.warp(5 * 1 days);
+        vm.prank(node1);
+        arpa.approve(address(staking), nodeToStake);
+        vm.prank(node1);
+        staking.stake(nodeToStake);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertEq(staking.getDelegationReward(node1), 0);
+
+        // T10
+        vm.warp(10 * 1 days);
+        vm.prank(user1);
+        arpa.approve(address(staking), userToStake);
+        vm.prank(user1);
+        staking.stake(userToStake);
+        assertEq(staking.getBaseReward(user1), 0);
+        assertEq(staking.getDelegationReward(user1), 0);
+
+        // T20
+        vm.warp(20 * 1 days);
+        assertApproxEqAbs(staking.getBaseReward(user1), rewardRate * 10 days * 95 / 100, 1e18);
+        assertEq(staking.getDelegationReward(user1), 0);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(staking.getDelegationReward(node1), rewardRate * 10 days * 5 / 100, 1e18);
+
+        // T30
+        vm.warp(30 * 1 days);
+        assertApproxEqAbs(staking.getBaseReward(user1), rewardRate * 20 days * 95 / 100, 1e18);
+        assertEq(staking.getDelegationReward(user1), 0);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(staking.getDelegationReward(node1), rewardRate * 20 days * 5 / 100, 1e18);
+
+        // All users and nodes quit staking
+        vm.prank(user1);
+        staking.unstake(userToStake);
+
+        vm.prank(node1);
+        staking.unstake(nodeToStake);
+
+        // T54
+        // All users and nodes claim their rewards and frozen principal, the balance of pool should be rewards of 10 day
+        vm.warp(44 * 1 days);
+
+        vm.prank(user1);
+        staking.claim();
+
+        vm.prank(node1);
+        staking.claimFrozenPrincipal();
+        assertApproxEqAbs(arpa.balanceOf(address(staking)), rewardRate * 10 days, 1e18);
+    }
+
+    function testNodeLateRewardCalculation1u1n() public {
+        uint256 rewardRate = rewardAmount / 30 days;
+        uint256 userToStake = 1_000 * 1e18;
+        deal(address(arpa), user1, userToStake);
+
+        uint256 nodeToStake = operatorStakeAmount;
+        deal(address(arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        staking.addOperators(operators);
+
+        vm.prank(admin);
+        arpa.approve(address(staking), rewardAmount);
+        vm.prank(admin);
+        // T0
+        staking.start(rewardAmount, 30 days);
+
+        // T10
+        vm.warp(10 * 1 days);
+        vm.prank(user1);
+        arpa.approve(address(staking), userToStake);
+        vm.prank(user1);
+        staking.stake(userToStake);
+        assertEq(staking.getBaseReward(user1), 0);
+        assertEq(staking.getDelegationReward(user1), 0);
+
+        // T15
+        vm.warp(15 * 1 days);
+        vm.prank(node1);
+        arpa.approve(address(staking), nodeToStake);
+        vm.prank(node1);
+        staking.stake(nodeToStake);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertEq(staking.getDelegationReward(node1), 0);
+
+        // T20
+        vm.warp(20 * 1 days);
+        assertApproxEqAbs(staking.getBaseReward(user1), rewardRate * 10 days * 95 / 100, 1e18);
+        assertEq(staking.getDelegationReward(user1), 0);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(staking.getDelegationReward(node1), rewardRate * 5 days * 5 / 100, 1e18);
+
+        // T30
+        vm.warp(30 * 1 days);
+        assertApproxEqAbs(staking.getBaseReward(user1), rewardRate * 20 days * 95 / 100, 1e18);
+        assertEq(staking.getDelegationReward(user1), 0);
+        assertEq(staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(staking.getDelegationReward(node1), rewardRate * 15 days * 5 / 100, 1e18);
+
+        // All users and nodes quit staking
+        vm.prank(user1);
+        staking.unstake(userToStake);
+
+        vm.prank(node1);
+        staking.unstake(nodeToStake);
+
+        // T54
+        // All users and nodes claim their rewards and frozen principal, the balance of pool should be rewards of 10 day
+        vm.warp(44 * 1 days);
+
+        vm.prank(user1);
+        staking.claim();
+
+        vm.prank(node1);
+        staking.claimFrozenPrincipal();
+        assertApproxEqAbs(arpa.balanceOf(address(staking)), rewardRate * 10 days + rewardRate * 5 days * 5 / 100, 1e18);
     }
 
     function testAddReward() public {
@@ -697,12 +913,114 @@ contract StakingTest is Test {
         emit log_named_uint("rewards of n2 on T30", balanceAfter - balanceBefore);
     }
 
-    function testStakeRevertBeforePoolStart() public {
+    function testMigration() public {
         uint256 userToStake = 1_000 * 1e18;
+        uint256 nodeToStake = operatorStakeAmount;
         deal(address(arpa), user1, userToStake);
+        deal(address(arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        staking.addOperators(operators);
+
+        // before the pool starts
+        vm.prank(node1);
+        arpa.approve(address(staking), nodeToStake);
+        vm.prank(node1);
+        staking.stake(nodeToStake);
+
+        // start the pool
+        vm.warp(0 days);
+        vm.prank(admin);
+        arpa.approve(address(staking), rewardAmount);
+        vm.prank(admin);
+        staking.start(rewardAmount, 30 days);
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(StakingPoolLib.InvalidPoolStatus.selector, false, true));
+        arpa.approve(address(staking), userToStake);
+        vm.prank(user1);
         staking.stake(userToStake);
+
+        // user cannot migrate before the pool depletes
+        vm.warp(10 days);
+        vm.expectRevert(abi.encodeWithSelector(StakingPoolLib.InvalidPoolStatus.selector, true, false));
+        vm.prank(user1);
+        bytes memory userMigrationData = abi.encode(user1, new bytes(0));
+        staking.migrate(userMigrationData);
+
+        // actually we can also propose and accept before the pool depletes
+        vm.warp(30 days);
+        Staking.PoolConstructorParams memory params = Staking.PoolConstructorParams(
+            ArpaTokenInterface(address(arpa)),
+            initialMaxPoolSize,
+            initialMaxCommunityStakeAmount,
+            minCommunityStakeAmount,
+            operatorStakeAmount,
+            minInitialOperatorCount,
+            minRewardDuration,
+            delegationRateDenominator,
+            unstakeFreezingDuration
+        );
+        vm.prank(admin);
+        MockStakingMigrationTarget stakingMigrationTarget = new MockStakingMigrationTarget(params);
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IMigratable.InvalidMigrationTarget.selector));
+        staking.proposeMigrationTarget(0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF);
+
+        vm.prank(admin);
+        staking.proposeMigrationTarget(address(stakingMigrationTarget));
+
+        vm.expectRevert(abi.encodeWithSelector(IStaking.AccessForbidden.selector));
+        vm.prank(admin);
+        staking.acceptMigrationTarget();
+
+        vm.expectRevert(abi.encodeWithSelector(IMigratable.InvalidMigrationTarget.selector));
+        vm.prank(user1);
+        staking.migrate(userMigrationData);
+
+        // after 7 days the migration target can be accepted by the admin
+        vm.warp(37 days);
+        vm.prank(admin);
+        staking.acceptMigrationTarget();
+
+        // when the pool depletes and the migration target is accepted, the user can migrate
+        vm.prank(admin);
+        stakingMigrationTarget.addOperators(operators);
+        deal(address(arpa), admin, rewardAmount);
+        vm.prank(admin);
+        arpa.approve(address(stakingMigrationTarget), rewardAmount);
+        vm.prank(admin);
+        stakingMigrationTarget.start(rewardAmount, 30 days);
+
+        uint256 expectedCommunityStakerMigrationAmount = userToStake + rewardAmount * 95 / 100;
+        vm.prank(user1);
+        staking.migrate(userMigrationData);
+        assertEq(staking.getCommunityStakersCount(), 0);
+        assertEq(staking.getStake(user1), 0);
+        assertEq(stakingMigrationTarget.getCommunityStakersCount(), 1);
+        assertApproxEqAbs(stakingMigrationTarget.getStake(user1), expectedCommunityStakerMigrationAmount, 1e18);
+
+        uint256 expectedNodeRewardAmount = rewardAmount * 5 / 100;
+        bytes memory nodeMigrationData = abi.encode(node1, new bytes(0));
+        uint256 balanceBefore = arpa.balanceOf(node1);
+
+        vm.prank(node1);
+        staking.migrate(nodeMigrationData);
+        assertEq(staking.getDelegatesCount(), 0);
+        assertEq(staking.getStake(node1), 0);
+        assertEq(stakingMigrationTarget.getDelegatesCount(), 1);
+        assertApproxEqAbs(stakingMigrationTarget.getStake(node1), operatorStakeAmount, 1e18);
+
+        uint256 balanceAfter = arpa.balanceOf(node1);
+        assertApproxEqAbs(balanceAfter - balanceBefore, expectedNodeRewardAmount, 1e18);
+
+        assertApproxEqAbs(arpa.balanceOf(address(staking)), 0, 1e18);
+        assertApproxEqAbs(
+            arpa.balanceOf(address(stakingMigrationTarget)),
+            rewardAmount + expectedCommunityStakerMigrationAmount + operatorStakeAmount,
+            1e18
+        );
     }
 }
