@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import "forge-std/Script.sol";
-import {Staking, ArpaTokenInterface} from "../src/Staking.sol";
+import {Staking, IERC20} from "../src/Staking.sol";
 import "./ArpaLocalTest.sol";
 
 contract StakingLocalTestScript is Script {
@@ -30,7 +30,7 @@ contract StakingLocalTestScript is Script {
         arpa = new Arpa();
 
         Staking.PoolConstructorParams memory params = Staking.PoolConstructorParams(
-            ArpaTokenInterface(address(arpa)),
+            IERC20(address(arpa)),
             initialMaxPoolSize,
             initialMaxCommunityStakeAmount,
             minCommunityStakeAmount,

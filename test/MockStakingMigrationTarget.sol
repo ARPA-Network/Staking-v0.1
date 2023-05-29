@@ -9,6 +9,7 @@ contract MockStakingMigrationTarget is Staking, IMigrationTarget, IERC165 {
     using StakingPoolLib for StakingPoolLib.Pool;
     using RewardLib for RewardLib.Reward;
     using SafeCast for uint256;
+    using SafeERC20 for IERC20;
 
     mapping(address => bytes) public migratedData;
 
@@ -18,10 +19,10 @@ contract MockStakingMigrationTarget is Staking, IMigrationTarget, IERC165 {
         (address sender, bytes memory stakerData) = abi.decode(data, (address, bytes));
         migratedData[sender] = stakerData;
         if (s_pool._isOperator(sender)) {
-            if (amount > i_operatorStakeAmount) {
-                i_ARPA.transfer(sender, amount - i_operatorStakeAmount);
-            }
             _stakeAsOperator(sender, i_operatorStakeAmount);
+            if (amount > i_operatorStakeAmount) {
+                i_ARPA.safeTransfer(sender, amount - i_operatorStakeAmount);
+            }
         } else {
             _stakeAsCommunityStaker(sender, amount);
         }

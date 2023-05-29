@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.10;
 
-import {ArpaTokenInterface} from "./interfaces/ArpaTokenInterface.sol";
+import {IERC20, SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TypeAndVersionInterface} from "./interfaces/TypeAndVersionInterface.sol";
 import {Pausable} from "openzeppelin-contracts/contracts/security/Pausable.sol";
-import "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {MerkleProof} from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import {IERC165} from "openzeppelin-contracts/contracts/interfaces/IERC165.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
@@ -20,12 +20,13 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     using StakingPoolLib for StakingPoolLib.Pool;
     using RewardLib for RewardLib.Reward;
     using SafeCast for uint256;
+    using SafeERC20 for IERC20;
 
     /// @notice This struct defines the params required by the Staking contract's
     /// constructor.
     struct PoolConstructorParams {
         /// @notice The ARPA Token
-        ArpaTokenInterface ARPA;
+        IERC20 ARPA;
         /// @notice The initial maximum total stake amount across all stakers
         uint256 initialMaxPoolSize;
         /// @notice The initial maximum stake amount for a single community staker
@@ -47,7 +48,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         uint256 unstakeFreezingDuration;
     }
 
-    ArpaTokenInterface internal immutable i_ARPA;
+    IERC20 internal immutable i_ARPA;
     StakingPoolLib.Pool internal s_pool;
     RewardLib.Reward internal s_reward;
     /// @notice The address of the controller contract
@@ -158,16 +159,16 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
         // We need to transfer ARPA balance before we initialize the reward to
         // calculate the new reward expiry timestamp.
-        i_ARPA.transferFrom(msg.sender, address(this), amount);
+        i_ARPA.safeTransferFrom(msg.sender, address(this), amount);
 
         s_reward._initialize(i_minRewardDuration, amount, rewardDuration);
     }
 
     /// @inheritdoc IStakingOwner
     function addReward(uint256 amount, uint256 rewardDuration) external override(IStakingOwner) onlyOwner whenActive {
-        i_ARPA.transferFrom(msg.sender, address(this), amount);
+        i_ARPA.safeTransferFrom(msg.sender, address(this), amount);
 
-        s_reward._updateReward(amount, rewardDuration);
+        s_reward._updateReward(amount, rewardDuration, i_minRewardDuration);
 
         emit RewardLib.RewardAdded(amount, block.timestamp + rewardDuration);
     }
@@ -242,7 +243,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
         (uint256 amount, uint256 baseReward, uint256 delegationReward) = _exit(msg.sender);
 
-        i_ARPA.transfer(s_migrationTarget, uint256(amount + baseReward + delegationReward));
+        i_ARPA.safeTransfer(s_migrationTarget, uint256(amount + baseReward + delegationReward));
 
         // call migrate function
         IMigrationTarget(s_migrationTarget).migrateFrom(
@@ -295,7 +296,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         uint256 slashedRewards = Math.min(amount, earnedRewards);
         s_reward.missed[staker].delegated += slashedRewards._toUint96();
 
-        i_ARPA.transfer(owner(), slashedRewards);
+        i_ARPA.safeTransfer(owner(), slashedRewards);
 
         emit DelegationRewardSlashed(staker, slashedRewards);
     }
@@ -321,13 +322,13 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
             amount -= remainder;
         }
 
-        i_ARPA.transferFrom(msg.sender, address(this), amount);
-
         if (s_pool._isOperator(msg.sender)) {
             _stakeAsOperator(msg.sender, amount);
         } else {
             _stakeAsCommunityStaker(msg.sender, amount);
         }
+
+        i_ARPA.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     /// @inheritdoc IStaking
@@ -340,7 +341,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
         (uint256 baseReward, uint256 delegationReward) = _exit(msg.sender, amount, false);
 
-        i_ARPA.transfer(msg.sender, baseReward + delegationReward);
+        i_ARPA.safeTransfer(msg.sender, baseReward + delegationReward);
 
         emit Unstaked(msg.sender, amount, baseReward, delegationReward);
     }
@@ -369,7 +370,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
         s_reward.missed[msg.sender].base = accruedReward._toUint96();
 
-        i_ARPA.transfer(msg.sender, claimingReward);
+        i_ARPA.safeTransfer(msg.sender, claimingReward);
 
         emit RewardClaimed(msg.sender, claimingReward);
     }
@@ -401,7 +402,7 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
         }
 
         if (claimingPrincipal > 0) {
-            i_ARPA.transfer(msg.sender, claimingPrincipal);
+            i_ARPA.safeTransfer(msg.sender, claimingPrincipal);
         }
 
         emit FrozenPrincipalClaimed(msg.sender, claimingPrincipal);

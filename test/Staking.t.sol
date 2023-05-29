@@ -2,8 +2,8 @@
 pragma solidity >=0.8.10;
 
 import "forge-std/Test.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import "src/Staking.sol";
 import "./MockStakingMigrationTarget.sol";
 
@@ -57,7 +57,7 @@ contract StakingTest is Test {
         deal(address(arpa), admin, rewardAmount);
 
         Staking.PoolConstructorParams memory params = Staking.PoolConstructorParams(
-            ArpaTokenInterface(address(arpa)),
+            IERC20(address(arpa)),
             initialMaxPoolSize,
             initialMaxCommunityStakeAmount,
             minCommunityStakeAmount,
@@ -952,7 +952,7 @@ contract StakingTest is Test {
         // actually we can also propose and accept before the pool depletes
         vm.warp(30 days);
         Staking.PoolConstructorParams memory params = Staking.PoolConstructorParams(
-            ArpaTokenInterface(address(arpa)),
+            IERC20(address(arpa)),
             initialMaxPoolSize,
             initialMaxCommunityStakeAmount,
             minCommunityStakeAmount,

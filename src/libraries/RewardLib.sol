@@ -71,17 +71,16 @@ library RewardLib {
         // Timestamp when the reward stops accumulating. Has to support a very long
         // duration for scenarios with low reward rate.
         // `endTimestamp` >= `startTimestamp`
-        uint256 endTimestamp;
+        uint32 endTimestamp;
         // Timestamp when the reward comes into effect
         // `startTimestamp` <= `endTimestamp`
         uint32 startTimestamp;
-        // Minimum duration the reward needs to last for
-        uint256 minRewardDuration;
     }
 
     /// @notice initializes the reward with the defined parameters
     /// @param minRewardDuration the minimum duration rewards need to last for
     /// @param newReward the amount of rewards to be added to the pool
+    /// @param rewardDuration the duration for which the reward will be distributed
     /// @dev can only be called once. Any future reward changes have to be done
     /// using specific functions.
     function _initialize(Reward storage reward, uint256 minRewardDuration, uint256 newReward, uint256 rewardDuration)
@@ -93,9 +92,8 @@ library RewardLib {
         reward.startTimestamp = blockTimestamp;
         reward.delegated.lastAccumulateTimestamp = blockTimestamp;
         reward.base.lastAccumulateTimestamp = blockTimestamp;
-        reward.minRewardDuration = minRewardDuration;
 
-        _updateReward(reward, newReward, rewardDuration);
+        _updateReward(reward, newReward, rewardDuration, minRewardDuration);
 
         emit RewardInitialized(newReward, reward.startTimestamp, reward.endTimestamp);
     }
@@ -209,17 +207,19 @@ library RewardLib {
     /// rewards are added, TODO and an alert is raised
     /// @param newReward new reward amount
     /// @param rewardDuration duration of the reward
-    function _updateReward(Reward storage reward, uint256 newReward, uint256 rewardDuration) internal {
+    function _updateReward(Reward storage reward, uint256 newReward, uint256 rewardDuration, uint256 minRewardDuration)
+        internal
+    {
         uint256 remainingRewards =
             (_isDepleted(reward) ? 0 : (reward.rate * (uint256(reward.endTimestamp) - block.timestamp))) + newReward;
 
         // Validate that the new reward duration is at least the min reward duration.
         // This is a safety mechanism to guard against operational mistakes.
-        if (rewardDuration < reward.minRewardDuration) {
+        if (rewardDuration < minRewardDuration) {
             revert RewardDurationTooShort();
         }
 
-        reward.endTimestamp = block.timestamp + rewardDuration;
+        reward.endTimestamp = (block.timestamp + rewardDuration)._toUint32();
         reward.rate = (remainingRewards / rewardDuration)._toUint80();
     }
 
