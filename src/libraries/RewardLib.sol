@@ -28,6 +28,8 @@ library RewardLib {
 
     /// @notice This error is thrown when the updated reward duration is too short
     error RewardDurationTooShort();
+    /// @notice This error is thrown when the reward is already initialized
+    error AlreadyInitialized();
 
     /// @notice This is the reward calculation precision variable. ARPA token has the
     /// 1e18 multiplier which means that rewards are floored after 6 decimals
@@ -86,7 +88,7 @@ library RewardLib {
     function _initialize(Reward storage reward, uint256 minRewardDuration, uint256 newReward, uint256 rewardDuration)
         internal
     {
-        if (reward.startTimestamp != 0) revert();
+        if (reward.startTimestamp != 0) revert AlreadyInitialized();
 
         uint32 blockTimestamp = block.timestamp._toUint32();
         reward.startTimestamp = blockTimestamp;
