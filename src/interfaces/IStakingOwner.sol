@@ -15,14 +15,24 @@ interface IStakingOwner {
     /// is supplied
     error InvalidMinCommunityStakeAmount();
 
+    /// @notice This error is thrown when the reward is already initialized
+    error AlreadyInitialized();
+
     /// @notice Adds one or more operators to a list of operators
     /// @dev Should only callable by the Owner
     /// @param operators A list of operator addresses to add
     function addOperators(address[] calldata operators) external;
 
-    /// @notice This function can be called to add rewards to the pool
+    /// @notice This function can be called to add rewards to the pool when the reward is depleted
+    /// @dev Should only callable by the Owner
+    /// @param amount The amount of rewards to add to the pool
+    /// @param rewardDuration The duration of the reward
+    function newReward(uint256 amount, uint256 rewardDuration) external;
+
+    /// @notice This function can be called to add rewards to the pool when the reward is not depleted
     /// @dev Should only be callable by the owner
     /// @param amount The amount of rewards to add to the pool
+    /// @param rewardDuration The duration of the reward
     function addReward(uint256 amount, uint256 rewardDuration) external;
 
     /// @notice Set the pool config
@@ -32,14 +42,14 @@ interface IStakingOwner {
 
     /// @notice Set controller contract address
     /// @dev Should only be callable by the owner
+    /// @param controller The address of the controller contract
     function setController(address controller) external;
 
     /// @notice Transfers ARPA tokens and initializes the reward
     /// @dev Uses ERC20 approve + transferFrom flow
     /// @param amount rewards amount in ARPA
-    /// @param nextUnlockCycleInDays The number of days in the next unlock cycle
-    /// each ARPA staked.
-    function start(uint256 amount, uint256 nextUnlockCycleInDays) external;
+    /// @param rewardDuration rewards duration in seconds
+    function start(uint256 amount, uint256 rewardDuration) external;
 
     /// @notice This function pauses staking
     /// @dev Sets the pause flag to true

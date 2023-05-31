@@ -141,8 +141,4 @@ interface IStaking {
 
     /// @return address controller contract's address that is used by the pool
     function getController() external view returns (address);
-
-    /// @notice This function returns the pause state
-    /// @return bool whether or not the pool is paused
-    function isPaused() external view returns (bool);
 }

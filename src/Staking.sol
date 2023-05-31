@@ -155,6 +155,8 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
 
     /// @inheritdoc IStakingOwner
     function start(uint256 amount, uint256 rewardDuration) external override(IStakingOwner) onlyOwner {
+        if (_reward.startTimestamp != 0) revert AlreadyInitialized();
+
         _pool._open(_minInitialOperatorCount);
 
         // We need to transfer ARPA balance before we initialize the reward to
@@ -165,7 +167,25 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     }
 
     /// @inheritdoc IStakingOwner
+    function newReward(uint256 amount, uint256 rewardDuration)
+        external
+        override(IStakingOwner)
+        onlyOwner
+        whenInactive
+    {
+        _reward._accumulateBaseRewards(getTotalCommunityStakedAmount());
+        _reward._accumulateDelegationRewards(getTotalDelegatedAmount(), getTotalCommunityStakedAmount());
+
+        _arpa.safeTransferFrom(msg.sender, address(this), amount);
+
+        _reward._initialize(_minRewardDuration, amount, rewardDuration);
+    }
+
+    /// @inheritdoc IStakingOwner
     function addReward(uint256 amount, uint256 rewardDuration) external override(IStakingOwner) onlyOwner whenActive {
+        _reward._accumulateBaseRewards(getTotalCommunityStakedAmount());
+        _reward._accumulateDelegationRewards(getTotalDelegatedAmount(), getTotalCommunityStakedAmount());
+
         _arpa.safeTransferFrom(msg.sender, address(this), amount);
 
         _reward._updateReward(amount, rewardDuration, _minRewardDuration);
@@ -540,11 +560,6 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
                 break;
             }
         }
-    }
-
-    /// @inheritdoc IStaking
-    function isPaused() external view override(IStaking) returns (bool) {
-        return paused();
     }
 
     /// @inheritdoc IStaking
