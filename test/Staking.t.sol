@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.10;
+pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
@@ -1024,5 +1024,146 @@ contract StakingTest is Test {
             _rewardAmount + expectedCommunityStakerMigrationAmount + _operatorStakeAmount,
             1e18
         );
+    }
+
+    function testAddRewardCalculation1u1n() public {
+        uint256 rewardRate = _rewardAmount / 30 days;
+        uint256 userToStake = 1_000 * 1e18;
+        deal(address(_arpa), user1, userToStake);
+
+        uint256 nodeToStake = _operatorStakeAmount;
+        deal(address(_arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        _staking.addOperators(operators);
+
+        // before the pool starts
+        vm.prank(node1);
+        _arpa.approve(address(_staking), nodeToStake);
+        vm.prank(node1);
+        _staking.stake(nodeToStake);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertEq(_staking.getDelegationReward(node1), 0);
+
+        vm.warp(0 days);
+        vm.prank(admin);
+        _arpa.approve(address(_staking), _rewardAmount);
+        vm.prank(admin);
+        // T0
+        _staking.start(_rewardAmount, 30 days);
+
+        vm.prank(user1);
+        _arpa.approve(address(_staking), userToStake);
+        vm.prank(user1);
+        _staking.stake(userToStake);
+        assertEq(_staking.getBaseReward(user1), 0);
+        assertEq(_staking.getDelegationReward(user1), 0);
+
+        // T10
+        vm.warp(10 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), rewardRate * 10 days * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), rewardRate * 10 days * 5 / 100, 1e18);
+
+        // add reward
+        deal(address(_arpa), admin, _rewardAmount);
+        vm.prank(admin);
+        _arpa.approve(address(_staking), _rewardAmount);
+        vm.prank(admin);
+        _staking.addReward(_rewardAmount, 20 days);
+
+        // T30
+        vm.warp(30 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), _rewardAmount * 2 * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 2 * 5 / 100, 1e18);
+
+        // >T30
+        vm.warp(35 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), _rewardAmount * 2 * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 2 * 5 / 100, 1e18);
+    }
+
+    function testNewRewardCalculation1u1n() public {
+        uint256 rewardRate = _rewardAmount / 30 days;
+        uint256 userToStake = 1_000 * 1e18;
+        deal(address(_arpa), user1, userToStake);
+
+        uint256 nodeToStake = _operatorStakeAmount;
+        deal(address(_arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        _staking.addOperators(operators);
+
+        // before the pool starts
+        vm.prank(node1);
+        _arpa.approve(address(_staking), nodeToStake);
+        vm.prank(node1);
+        _staking.stake(nodeToStake);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertEq(_staking.getDelegationReward(node1), 0);
+
+        vm.warp(0 days);
+        vm.prank(admin);
+        _arpa.approve(address(_staking), _rewardAmount);
+        vm.prank(admin);
+        // T0
+        _staking.start(_rewardAmount, 30 days);
+
+        vm.prank(user1);
+        _arpa.approve(address(_staking), userToStake);
+        vm.prank(user1);
+        _staking.stake(userToStake);
+        assertEq(_staking.getBaseReward(user1), 0);
+        assertEq(_staking.getDelegationReward(user1), 0);
+
+        // T10
+        vm.warp(10 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), rewardRate * 10 days * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), rewardRate * 10 days * 5 / 100, 1e18);
+
+        // T30
+        vm.warp(30 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), _rewardAmount * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 5 / 100, 1e18);
+
+        // >T30
+        vm.warp(35 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), _rewardAmount * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 5 / 100, 1e18);
+
+        // start a new round of reward
+        deal(address(_arpa), admin, _rewardAmount);
+        vm.prank(admin);
+        _arpa.approve(address(_staking), _rewardAmount);
+        vm.prank(admin);
+        _staking.newReward(_rewardAmount, 20 days);
+
+        vm.warp(55 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), _rewardAmount * 2 * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 2 * 5 / 100, 1e18);
+
+        // >T55
+        vm.warp(60 * 1 days);
+        assertApproxEqAbs(_staking.getBaseReward(user1), _rewardAmount * 2 * 95 / 100, 1e18);
+        assertEq(_staking.getDelegationReward(user1), 0);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 2 * 5 / 100, 1e18);
     }
 }
