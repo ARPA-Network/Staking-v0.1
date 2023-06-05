@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.18;
 
 interface IMigrationTarget {
     /// @notice This function allows stakers to migrate funds from an old staking pool.

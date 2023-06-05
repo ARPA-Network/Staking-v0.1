@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.18;
 
 /// @notice Owner functions restricted to the setup and maintenance
 /// of the staking contract by the owner.

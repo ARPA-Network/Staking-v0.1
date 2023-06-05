@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.18;
 
 import {SafeCast} from "./SafeCast.sol";
 import {StakingPoolLib} from "./StakingPoolLib.sol";
@@ -193,11 +193,6 @@ library RewardLib {
         returns (uint256)
     {
         return amount - _getDelegatedAmount(amount, delegationRateDenominator);
-    }
-
-    /// @return uint256 the remaining reward duration (time until end), or 0 if expired/ended.
-    function _getRemainingDuration(Reward storage reward) internal view returns (uint256) {
-        return _isDepleted(reward) ? 0 : reward.endTimestamp - block.timestamp;
     }
 
     /// @notice This function is called when the staking pool is initialized,

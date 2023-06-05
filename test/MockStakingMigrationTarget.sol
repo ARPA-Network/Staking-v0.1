@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.18;
 
 import {IERC165} from "openzeppelin-contracts/contracts/interfaces/IERC165.sol";
 import {Staking, StakingPoolLib, RewardLib, IMigrationTarget, SafeERC20, IERC20} from "../src/Staking.sol";
