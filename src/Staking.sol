@@ -548,12 +548,12 @@ contract Staking is IStaking, IStakingOwner, INodeStaking, IMigratable, Ownable,
     }
 
     /// @inheritdoc IStaking
-    function getClaimablePrincipalAmount(address) external view returns (uint256 claimingPrincipal) {
-        StakingPoolLib.FrozenPrincipal[] storage frozenPrincipals = _pool.stakers[msg.sender].frozenPrincipals;
+    function getClaimablePrincipalAmount(address staker) external view returns (uint256 claimingPrincipal) {
+        StakingPoolLib.FrozenPrincipal[] memory frozenPrincipals = _pool.stakers[staker].frozenPrincipals;
         if (frozenPrincipals.length == 0) return 0;
 
         for (uint256 i = 0; i < frozenPrincipals.length; i++) {
-            StakingPoolLib.FrozenPrincipal storage frozenPrincipal = frozenPrincipals[i];
+            StakingPoolLib.FrozenPrincipal memory frozenPrincipal = frozenPrincipals[i];
             if (frozenPrincipals[i].unlockTimestamp <= block.timestamp) {
                 claimingPrincipal += frozenPrincipal.amount;
             } else {
