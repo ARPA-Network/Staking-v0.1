@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Staking, IERC20, StakingPoolLib, IStaking, IMigratable} from "../src/Staking.sol";
 import {MockStakingMigrationTarget} from "./MockStakingMigrationTarget.sol";
+import {SimpleTransferBalanceStakingMigrationTarget} from "./SimpleTransferBalanceStakingMigrationTarget.sol";
 
 // solhint-disable-next-line max-states-count
 contract StakingTest is Test {
@@ -1165,5 +1166,130 @@ contract StakingTest is Test {
         assertEq(_staking.getDelegationReward(user1), 0);
         assertEq(_staking.getBaseReward(node1), 0);
         assertApproxEqAbs(_staking.getDelegationReward(node1), _rewardAmount * 2 * 5 / 100, 1e18);
+    }
+
+    function testUnstakeAndClaimUnlockedStaking() public {
+        uint256 userToStake = 1_000 * 1e18;
+        deal(address(_arpa), user1, userToStake);
+
+        uint256 nodeToStake = _operatorStakeAmount;
+        deal(address(_arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        _staking.addOperators(operators);
+
+        // before the pool starts
+        vm.prank(node1);
+        _arpa.approve(address(_staking), nodeToStake);
+        vm.prank(node1);
+        _staking.stake(nodeToStake);
+        assertEq(_staking.getBaseReward(node1), 0);
+        assertEq(_staking.getDelegationReward(node1), 0);
+
+        vm.warp(0 days);
+        vm.prank(admin);
+        _arpa.approve(address(_staking), _rewardAmount);
+        vm.prank(admin);
+        // T0
+        _staking.start(_rewardAmount, 30 days);
+
+        vm.prank(user1);
+        _arpa.approve(address(_staking), userToStake);
+        vm.prank(user1);
+        _staking.stake(userToStake);
+        assertEq(_staking.getBaseReward(user1), 0);
+        assertEq(_staking.getDelegationReward(user1), 0);
+
+        uint256 balanceBefore;
+        uint256 balanceAfter;
+        uint256 claimable;
+
+        balanceBefore = _arpa.balanceOf(user1);
+        assertEq(balanceBefore, 0);
+        vm.prank(user1);
+        _staking.unstake(userToStake);
+        claimable = _staking.getClaimablePrincipalAmount(user1);
+        assertEq(claimable, 0);
+        // T10
+        vm.warp(10 days);
+        claimable = _staking.getClaimablePrincipalAmount(user1);
+        assertEq(claimable, 0);
+        vm.prank(user1);
+        _staking.claim();
+        balanceAfter = _arpa.balanceOf(user1);
+        assertEq(balanceAfter, 0);
+        // T14
+        vm.warp(14 days);
+        claimable = _staking.getClaimablePrincipalAmount(user1);
+        assertEq(claimable, userToStake);
+        vm.prank(user1);
+        _staking.claim();
+        balanceAfter = _arpa.balanceOf(user1);
+        assertEq(balanceAfter, userToStake);
+    }
+
+    function testMigrationBeforeStart() public {
+        uint256 nodeToStake = _operatorStakeAmount;
+        deal(address(_arpa), node1, nodeToStake);
+
+        address[] memory operators = new address[](1);
+        operators[0] = node1;
+        vm.prank(admin);
+        _staking.addOperators(operators);
+
+        // before the pool starts
+        vm.prank(node1);
+        _arpa.approve(address(_staking), nodeToStake);
+        vm.prank(node1);
+        _staking.stake(nodeToStake);
+        assertEq(_staking.getDelegatesCount(), 1);
+        assertEq(_staking.getStake(node1), nodeToStake);
+
+        // actually we can also propose and accept before the pool depletes
+        vm.warp(0 days);
+        Staking.PoolConstructorParams memory params = Staking.PoolConstructorParams(
+            IERC20(address(_arpa)),
+            _initialMaxPoolSize,
+            _initialMaxCommunityStakeAmount,
+            _minCommunityStakeAmount,
+            _operatorStakeAmount,
+            _minInitialOperatorCount,
+            _minRewardDuration,
+            _delegationRateDenominator,
+            _unstakeFreezingDuration
+        );
+        vm.prank(admin);
+        SimpleTransferBalanceStakingMigrationTarget stakingMigrationTarget =
+            new SimpleTransferBalanceStakingMigrationTarget(params);
+
+        vm.prank(admin);
+        _staking.proposeMigrationTarget(address(stakingMigrationTarget));
+
+        vm.expectRevert(abi.encodeWithSelector(IStaking.AccessForbidden.selector));
+        vm.prank(admin);
+        _staking.acceptMigrationTarget();
+
+        // after 7 days the migration target can be accepted by the admin
+        vm.warp(7 days);
+        vm.prank(admin);
+        _staking.acceptMigrationTarget();
+
+        bytes memory nodeMigrationData = abi.encode(node1, new bytes(0));
+        uint256 balanceBefore = _arpa.balanceOf(node1);
+
+        vm.prank(node1);
+        _staking.migrate(nodeMigrationData);
+        assertEq(_staking.getDelegatesCount(), 0);
+        assertEq(_staking.getStake(node1), 0);
+        assertEq(stakingMigrationTarget.getDelegatesCount(), 0);
+        assertEq(stakingMigrationTarget.getStake(node1), 0);
+
+        uint256 balanceAfter = _arpa.balanceOf(node1);
+        assertApproxEqAbs(balanceAfter - balanceBefore, nodeToStake, 1e18);
+
+        assertEq(_arpa.balanceOf(address(_staking)), 0);
+        assertEq(_arpa.balanceOf(address(stakingMigrationTarget)), 0);
     }
 }
