@@ -17,7 +17,7 @@ forge build
 # Run Tests
 forge test -vv
 # Run a specific test
-forge test --match-test testRewardCalculation1u1n -vvvvv
+forge test --mt testRewardCalculation1u1n -vvvvv
 ```
 
 ## Coverage
@@ -82,6 +82,10 @@ Code structures have been adapted from the following resources:
 - [smartcontractkit/staking-v0.1](https://github.com/smartcontractkit/staking-v0.1)
 - [Bella-DeFinTech/flex-saving](https://github.com/Bella-DeFinTech/flex-saving)
 
-## Disclaimers
+## Audits and Security
 
-**This software has not been audited. Use at your own risk.**
+We take security seriously. If you believe you have found a security issue, please report it to us as soon as possible.
+
+We have conducted static analysis on the codebase using [Slither](https://github.com/crytic/slither).
+
+ARPA-Network Staking v0.1 smart contracts have been audited by PeckShield. The audit report is made available [here](audit/PeckShield-Audit-Report-ARPA-v1.0.pdf).
